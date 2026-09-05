@@ -1,55 +1,100 @@
 #pragma once
 #include<iostream>
-#include<vector>
 #include<cassert>
+#include<vector>
 #include<utility>
+using namespace std;
+
 enum Status
 {
     EXIST,
-    EMPTY,
-    DELETE
+    DELETE,
+    EMPTY
 };
 
 template<class K,class V>
 struct HashData
 {
-    HashData()
-    :_status(EMPTY)
-    {}
-    std::pair<K,V> _kv;
-    Status _status;
+    pair<K,V> _kv;
+    Status _status=EMPTY;
 };
 
-template<class K,class V>
+template<class K>
+struct Hash
+{
+    size_t operator()(const K& key)const
+    {
+        return (size_t)key;
+    }
+};
+template<>
+struct Hash<string>
+{
+    size_t operator()(const string& st)const
+    {
+        size_t hashi=0;
+        for(const auto& e : st)
+        {
+            hashi=hashi*131+e;
+        }
+        return hashi;
+    }
+};
+
+template<class K,class V,class hash=Hash<K>>
 class HashTable
 {
 public:
     HashTable()
-    :_table(11),_n(0)
+    :_m(16),_table(size_t(1) << _m),_n(0)
     {}
-    bool Insert(const std::pair<K,V> kv)
+
+    size_t Hash_Pos(const size_t& key) const
+    {
+        size_t hashi=Disturb(key);
+        return hashi&(_table.size()-1);
+    }
+
+    size_t Disturb(const size_t& key)const
+    {
+        size_t hashi=key^(key>>16);
+        if(sizeof(size_t)>=8)
+            hashi^=hashi>>32;
+        return hashi;
+    }
+    bool Insert(const pair<K,V>& kv)
     {
         if(Find(kv.first))
         {
             return false;
         }
-        if(_n*10/_table.size()>=7)
+        if(_n*10>=7*_table.size())
         {
-            HashTable<K,V> newtable;
-            newtable._table.resize(2*_table.size());
-            for(const auto&e: _table)
+            size_t newM=_m+1;
+            size_t newsize=size_t(1)<<newM;
+            vector<HashData<K,V>> newtable(newsize);
+            for(const auto& e: _table)
             {
                 if(e._status==EXIST)
-                newtable.Insert(e._kv);
+                {
+                    size_t HashVal=hash()(e._kv.first);
+                    size_t hashi=Disturb(HashVal)&(newsize-1);
+                    while(newtable[hashi]._status==EXIST)
+                    {
+                        hashi=(hashi+1)&(newsize-1);
+                    }
+                    newtable[hashi]._kv=e._kv;
+                    newtable[hashi]._status=EXIST;
+                }
             }
-            _n=newtable._n;
-            std::swap(_table,newtable._table);
-
+            swap(newtable,_table);
+            _m=newM;
         }
-        size_t hashi=kv.first%_table.size();
+        hash _hash;
+        size_t hashi=Hash_Pos(_hash(kv.first));
         while(_table[hashi]._status==EXIST)
         {
-            hashi=(hashi+1)%_table.size();
+            hashi=(hashi+1)&(_table.size()-1);
         }
         _table[hashi]._kv=kv;
         _table[hashi]._status=EXIST;
@@ -59,52 +104,49 @@ public:
 
     HashData<K,V>* Find(const K& key)
     {
-        size_t start=key%_table.size();
-        size_t hashi=start;
+        hash _hash;
+        size_t hashi=Hash_Pos(_hash(key));
+        size_t start=hashi;
         while(_table[hashi]._status!=EMPTY)
         {
             if(_table[hashi]._status==EXIST&&_table[hashi]._kv.first==key)
             {
                 return &_table[hashi];
             }
-            hashi=(hashi+1)%_table.size();
+            hashi=(hashi+1)&(_table.size()-1);
             if(hashi==start)
-            break;
+                break;
         }
         return nullptr;
     }
-    const HashData<K,V>* Find(const K& key)const
+    const HashData<K,V>* Find(const K& key) const
+    {
+        hash _hash;
+        size_t hashi=Hash_Pos(_hash(key));
+        size_t start=hashi;
+        while(_table[hashi]._status!=EMPTY)
         {
-            size_t start=key%_table.size();
-            size_t hashi=start;
-            while(_table[hashi]._status!=EMPTY)
+            if(_table[hashi]._status==EXIST&&_table[hashi]._kv.first==key)
             {
-                if(_table[hashi]._status==EXIST&&_table[hashi]._kv.first==key)
-                {
-                    return &_table[hashi];
-                }
-                hashi=(hashi+1)%_table.size();
-                if(hashi==start)
-                break;
+                return &_table[hashi];
             }
-            return nullptr;
+            hashi=(hashi+1)&(_table.size()-1);
+            if(hashi==start)
+                break;
+        }
+        return nullptr;
     }
-
-
     bool Erase(const K& key)
     {
         HashData<K,V>* d=Find(key);
-        if(d)
-        {
-            d->_status=DELETE;
-            --_n;
-            return true;
-        }
+        if(d==nullptr)
         return false;
+        d->_status=DELETE;
+        --_n;
+        return true;
     }
 private:
-    //映射数组
-        std::vector<HashData<K,V>> _table;
-    //数组中的元素
-        size_t _n;
+    size_t _m;
+    vector<HashData<K,V>> _table;
+    size_t _n;
 };
