@@ -1,0 +1,12 @@
+.vs/
+*.ipch
+*.user
+*.suo
+x64/
+Debug/
+Release/
+*.o
+*.obj
+*.exe
+*.out
+code
